@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daria Zheltoukhova — Live Trading System</title>
+<meta name="description" content="An event-driven crypto trading system running live on Bybit: architecture, reliability and testing.">
+<style>
+:root{
+  --paper:#EDF1F5; --surface:#F7F9FB; --ink:#13202B; --muted:#56687A; --line:#C7D1DB;
+  --accent:#0A7C76; --accent-soft:#D3ECEA; --warn:#9A5B13;
+  --sans: system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0E151B; --surface:#141E26; --ink:#E2E9EF; --muted:#8C9DAD; --line:#253441;
+    --accent:#3CC0B4; --accent-soft:#163633; --warn:#E0A25A;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0E151B; --surface:#141E26; --ink:#E2E9EF; --muted:#8C9DAD; --line:#253441;
+  --accent:#3CC0B4; --accent-soft:#163633; --warn:#E0A25A;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.6 var(--sans);font-feature-settings:"tnum" 0}
+.wrap{max-width:1040px;margin:0 auto;padding:0 16px}
+@media (min-width:720px){.wrap{padding:0 40px}}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:2px}
+
+/* header */
+header{padding:64px 0 28px}
+.name{font-weight:650;font-size:17px;letter-spacing:.01em;color:var(--accent);margin:0 0 18px}
+h1{font-weight:300;font-size:clamp(30px,5.2vw,54px);line-height:1.08;letter-spacing:-.025em;margin:0;max-width:17em}
+h1 b{font-weight:650}
+.lede{color:var(--muted);font-size:19px;max-width:38em;margin:22px 0 0}
+
+/* event path */
+.path{margin:40px 0 8px}
+.path svg{display:block;width:100%;height:auto;overflow:visible}
+.path .rail{stroke:var(--line);stroke-width:2}
+.path .stop{fill:var(--paper);stroke:var(--ink);stroke-width:2}
+.path .t{fill:var(--ink);font:600 15px var(--sans)}
+.path .s{fill:var(--muted);font:400 13px var(--sans)}
+.path .pulse{fill:var(--accent)}
+.path .trail{stroke:var(--accent);stroke-width:2.5;stroke-dasharray:1000;stroke-dashoffset:1000}
+@media (prefers-reduced-motion:no-preference){
+  .path .trail{animation:draw 2.4s .4s cubic-bezier(.6,.05,.3,1) forwards}
+  .path .pulse{animation:run 2.4s .4s cubic-bezier(.6,.05,.3,1) forwards}
+}
+@media (prefers-reduced-motion:reduce){.path .trail{stroke-dashoffset:0}.path .pulse{display:none}}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes run{0%{transform:translateX(0);opacity:1}92%{opacity:1}100%{transform:translateX(960px);opacity:0}}
+.path-mobile{display:none}
+@media (max-width:640px){
+  .path svg{display:none}
+  .path-mobile{display:block;list-style:none;margin:0;padding:0 0 0 18px;border-left:2px solid var(--accent)}
+  .path-mobile li{margin:0 0 14px}
+  .path-mobile b{display:block}
+  .path-mobile span{color:var(--muted);font-size:15px}
+}
+
+section{padding:56px 0 8px}
+h2{font-size:26px;font-weight:600;letter-spacing:-.015em;margin:0 0 6px}
+.intro{color:var(--muted);max-width:40em;margin:0 0 28px}
+
+/* spec sheet */
+.spec{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:0 48px;margin:0}
+.spec div{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:13px 0;border-bottom:1px solid var(--line)}
+.spec dt{color:var(--muted)}
+.spec dd{margin:0;font-weight:600;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.note{color:var(--muted);font-size:14px;margin:12px 0 0}
+
+/* system map */
+figure{margin:0}
+.map{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;overflow-x:auto}
+.map svg{display:block;min-width:760px;width:100%;height:auto}
+.map .box{fill:var(--paper);stroke:var(--ink);stroke-width:1.4;rx:6}
+.map .ext{fill:none;stroke:var(--muted);stroke-width:1.2;stroke-dasharray:4 4}
+.map .store{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.4}
+.map .hd{fill:var(--ink);font:650 14px var(--sans)}
+.map .tx{fill:var(--muted);font:400 12px var(--sans)}
+.map .lk{stroke:var(--muted);stroke-width:1.3;fill:none;marker-end:url(#arw)}
+.map .lk.hot{stroke:var(--accent);stroke-width:2;marker-end:url(#arwh)}
+.map .lb{fill:var(--muted);font:400 11px var(--sans)}
+.map .grp{fill:none;stroke:var(--line);stroke-width:1.2}
+.map .gl{fill:var(--muted);font:600 12px var(--sans)}
+figcaption{color:var(--muted);font-size:14px;margin-top:12px;max-width:46em}
+.scroll-hint{display:none;color:var(--muted);font-size:13px;margin:10px 0 0}
+@media (max-width:800px){.scroll-hint{display:block}}
+.legend{display:inline-flex;gap:6px;align-items:center;margin-right:18px}
+.legend i{display:inline-block;width:22px;height:0;border-top:2px solid var(--accent)}
+.legend i.cold{border-top:1.3px solid var(--muted)}
+
+/* decisions */
+.decisions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:8px 48px}
+.decisions article{padding:18px 0;border-top:2px solid var(--ink)}
+.decisions h3{font-size:18px;font-weight:650;margin:0 0 8px}
+.decisions ul{margin:0;padding-left:18px}
+.decisions li{margin:0 0 8px;max-width:36em}
+.decisions li::marker{color:var(--accent)}
+
+.stack{display:flex;flex-wrap:wrap;gap:8px;list-style:none;padding:0;margin:0}
+.stack li{border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:15px;background:var(--surface)}
+
+footer{padding:56px 0 48px;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="name">Daria Zheltoukhova · Senior Backend Engineer</p>
+  <h1>A live, event-driven trading system on Bybit, <b>designed, built and operated by one engineer.</b></h1>
+  <p class="lede">It follows around 780 crypto futures markets in real time, checks every update against its trading strategy, opens and manages trades on its own and records every executed order — split across several cooperating services.</p>
+
+  <div class="path" aria-label="Path of a single event through the system">
+    <svg viewBox="0 0 1000 120" role="img" aria-hidden="true">
+      <line class="rail" x1="20" y1="30" x2="980" y2="30"/>
+      <line class="trail" x1="20" y1="30" x2="980" y2="30"/>
+      <g>
+        <circle class="stop" cx="20" cy="30" r="8"/><text class="t" x="0" y="66">Market data</text><text class="s" x="0" y="86">~1,100 updates/s</text>
+        <circle class="stop" cx="260" cy="30" r="8"/><text class="t" x="260" y="66" text-anchor="middle">Signal engine</text><text class="s" x="260" y="86" text-anchor="middle">applies the strategy</text>
+        <circle class="stop" cx="500" cy="30" r="8"/><text class="t" x="500" y="66" text-anchor="middle">Order execution</text><text class="s" x="500" y="86" text-anchor="middle">trade and its orders</text>
+        <circle class="stop" cx="740" cy="30" r="8"/><text class="t" x="740" y="66" text-anchor="middle">Trade tracking</text><text class="s" x="740" y="86" text-anchor="middle">each execution once</text>
+        <circle class="stop" cx="980" cy="30" r="8"/><text class="t" x="980" y="66" text-anchor="end">Alerts and console</text><text class="s" x="980" y="86" text-anchor="end">Telegram, web</text>
+      </g>
+      <circle class="pulse" r="6" cx="20" cy="30"/>
+    </svg>
+    <ol class="path-mobile">
+      <li><b>Market data</b><span>~1,100 updates/s</span></li>
+      <li><b>Signal engine</b><span>applies the strategy</span></li>
+      <li><b>Order execution</b><span>trade and its orders</span></li>
+      <li><b>Trade tracking</b><span>each execution once</span></li>
+      <li><b>Alerts and console</b><span>Telegram, web</span></li>
+    </ol>
+  </div>
+</header>
+
+<section aria-labelledby="map">
+  <h2 id="map">Architecture</h2>
+  <p class="intro">The bot’s processes talk through Redis rather than to each other. The hot path — from a price update to an order on the exchange — stays inside one worker process.</p>
+  <figure class="map">
+    <svg viewBox="0 0 1000 600" role="img" aria-labelledby="map-title map-desc">
+      <title id="map-title">System map</title>
+      <desc id="map-desc">Bybit feeds four signal workers and a trade tracker; they share a cache and a persistent store in Redis; a web console and Telegram sit on top; two companion services handle hedge unwinding.</desc>
+      <defs>
+        <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+        <marker id="arwh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+      </defs>
+
+      <!-- exchange -->
+      <rect class="ext" x="20" y="20" width="160" height="410" rx="8"/>
+      <text class="hd" x="36" y="48">Bybit</text>
+      <text class="tx" x="36" y="84">Live prices</text>
+      <text class="tx" x="36" y="100">public WebSocket</text>
+      <text class="tx" x="36" y="254">Trading API</text>
+      <text class="tx" x="36" y="270">REST: orders, positions</text>
+      <text class="tx" x="36" y="384">Account events</text>
+      <text class="tx" x="36" y="400">private WebSocket</text>
+
+      <!-- trading bot -->
+      <rect class="grp" x="230" y="20" width="500" height="410" rx="10"/>
+      <text class="gl" x="246" y="44">Core trading service</text>
+
+      <rect class="box" x="250" y="60" width="230" height="140"/>
+      <text class="hd" x="266" y="86">Signal workers × 4</text>
+      <text class="tx" x="266" y="108">Markets split across 4 processes</text>
+      <text class="tx" x="266" y="126">Check against the strategy</text>
+      <text class="tx" x="266" y="144">Check risk limits</text>
+      <text class="tx" x="266" y="162">Open trades and manage</text>
+      <text class="tx" x="266" y="180">their orders</text>
+
+      <rect class="box" x="500" y="60" width="210" height="140"/>
+      <text class="hd" x="516" y="86">Trade tracker</text>
+      <text class="tx" x="516" y="108">Records every execution</text>
+      <text class="tx" x="516" y="126">Keeps open orders up to date</text>
+      <text class="tx" x="516" y="144">Tracks protective orders</text>
+      <text class="tx" x="516" y="162">Catches up after disconnects</text>
+
+      <rect class="store" x="250" y="230" width="230" height="80" rx="6"/>
+      <text class="hd" x="266" y="256">Redis cache</text>
+      <text class="tx" x="266" y="278">Recent prices, work queues, locks</text>
+      <text class="tx" x="266" y="294">Safe to lose on restart</text>
+
+      <rect class="store" x="500" y="230" width="210" height="80" rx="6"/>
+      <text class="hd" x="516" y="256">Redis store</text>
+      <text class="tx" x="516" y="278">Trades, data for statistics,</text>
+      <text class="tx" x="516" y="294">live settings</text>
+
+      <rect class="box" x="250" y="340" width="230" height="74"/>
+      <text class="hd" x="266" y="366">Warm-up</text>
+      <text class="tx" x="266" y="388">Preloads markets and price history</text>
+      <text class="tx" x="266" y="404">before trading starts</text>
+
+      <rect class="box" x="500" y="340" width="210" height="74"/>
+      <text class="hd" x="516" y="366">Maintenance</text>
+      <text class="tx" x="516" y="388">Cancels orders that never filled</text>
+      <text class="tx" x="516" y="404">Refreshes the market list daily</text>
+
+      <!-- console & telegram -->
+      <rect class="box" x="780" y="60" width="200" height="110"/>
+      <text class="hd" x="796" y="86">Web console</text>
+      <text class="tx" x="796" y="108">Change settings, no restart</text>
+      <text class="tx" x="796" y="126">Signal and trade statistics</text>
+      <text class="tx" x="796" y="144">Hedge unwinding by hand</text>
+
+      <rect class="box" x="780" y="330" width="200" height="84"/>
+      <text class="hd" x="796" y="356">Telegram</text>
+      <text class="tx" x="796" y="378">Trade notifications</text>
+      <text class="tx" x="796" y="396">Technical alerts</text>
+
+      <!-- companions -->
+      <rect class="grp" x="230" y="460" width="750" height="120" rx="10"/>
+      <text class="gl" x="246" y="484">Companion services</text>
+      <rect class="box" x="250" y="496" width="345" height="68"/>
+      <text class="hd" x="266" y="520">Hedge unwind bot</text>
+      <text class="tx" x="266" y="542">Closes hedged long/short positions automatically</text>
+      <rect class="box" x="615" y="496" width="345" height="68"/>
+      <text class="hd" x="631" y="520">Manual unwind tool</text>
+      <text class="tx" x="631" y="542">Shows margin, liquidation price and possible loss</text>
+
+      <!-- links -->
+      <path class="lk hot" d="M180 92 H250"/>
+      <path class="lk hot" d="M250 150 H205 V262 H182"/>
+      <path class="lk" d="M180 392 H222 V215 H490 V130 H500"/>
+      <path class="lk" d="M365 200 V230"/>
+      <path class="lk" d="M605 200 V230"/>
+      <path class="lk" d="M365 340 V310"/>
+      <path class="lk" d="M605 340 V310"/>
+      <path class="lk" d="M780 115 H750 V270 H710" marker-start="url(#arw)"/>
+      <text class="lb" x="756" y="200">settings,</text>
+      <text class="lb" x="756" y="214">stats</text>
+      <path class="lk" d="M710 377 H780"/>
+      <text class="lb" x="718" y="370">alerts</text>
+    </svg>
+    <p class="scroll-hint">Scroll sideways to see the whole map.</p>
+    <figcaption><span class="legend"><i></i>hot path: price update to order</span><span class="legend"><i class="cold"></i>everything else</span><br>Each block is its own process in Docker Compose; the same stack runs on demo, the sub-account and production.</figcaption>
+  </figure>
+</section>
+
+<section aria-labelledby="facts">
+  <h2 id="facts">In production</h2>
+  <p class="intro">In production since March 2025, trading real money on a Bybit sub-account with a demo account as staging, and earning income since going live.</p>
+  <dl class="spec">
+    <div><dt>Trades per month</dt><dd>400–500</dd></div>
+    <div><dt>Money lost to software bugs</dt><dd>0</dd></div>
+    <div><dt>Crypto markets followed live</dt><dd>~780</dd></div>
+    <div><dt>Live market updates received</dt><dd>~1,100 / s</dd></div>
+    <div><dt>Signal worker processes</dt><dd>4</dd></div>
+    <div><dt>Environments on one stack</dt><dd>3</dd></div>
+  </dl>
+  <p class="note">Trades per month: last six months of live trading.</p>
+</section>
+
+
+
+<section aria-labelledby="decisions">
+  <h2 id="decisions">Engineering decisions</h2>
+  <p class="intro">How the system stays safe while trading unattended.</p>
+  <div class="decisions">
+    <article>
+      <h3>Reliability</h3>
+      <ul>
+        <li>Each execution is counted only once, even if it arrives twice: duplicates are filtered out by execution id, so a replay or reconnect never counts a trade twice.</li>
+        <li>After a WebSocket gap, missed executions are fetched from REST and pushed through the same handler; a longer outage falls back to reconciling against closed positions.</li>
+        <li>When in doubt, it does not trade: if positions or orders cannot be read, entries are blocked rather than allowed.</li>
+      </ul>
+    </article>
+    <article>
+      <h3>Risk controls</h3>
+      <ul>
+        <li>A cap on concurrent trades counts both open positions and orders still waiting to fill.</li>
+        <li>Entry orders that do not fill in time are cancelled; leftover orders are removed as soon as a trade closes.</li>
+        <li>Protective orders cap the worst-case loss of a trade at a set share of the deposit; a sanity check raises an alert if the numbers look wrong.</li>
+      </ul>
+    </article>
+    <article>
+      <h3>Concurrency and data</h3>
+      <ul>
+        <li>Market data is split across four asyncio processes, each holding hundreds of WebSocket subscriptions.</li>
+        <li>Redis is split in two: a disposable cache for hot market data and a persistent store for trades and analytics.</li>
+        <li>Settings change from the web console and reach every process through Redis pub/sub, without a restart.</li>
+      </ul>
+    </article>
+    <article>
+      <h3>Testing and operations</h3>
+      <ul>
+        <li>Tests run against in-memory Redis and a fake exchange; lifecycle tests replay real WebSocket frames recorded on the demo account.</li>
+        <li>Every environment — demo, sub-account, production — runs the same Docker Compose stack from immutable images.</li>
+        <li>Built with AI coding assistants; I own the architecture and personally review all money-critical code.</li>
+      </ul>
+    </article>
+  </div>
+</section>
+
+<section aria-labelledby="stack">
+  <h2 id="stack">Built with</h2>
+  <ul class="stack" style="margin-top:16px">
+    <li>Python</li><li>asyncio</li><li>aiohttp</li><li>WebSockets</li><li>Redis</li><li>Flask</li><li>Docker Compose</li><li>Grafana</li><li>pytest</li><li>Bybit API v5</li><li>Telegram Bot API</li>
+  </ul>
+</section>
+
+<footer>A personal project by Daria Zheltoukhova · <a href="https://www.linkedin.com/in/daria-zheltoukhova">LinkedIn</a>. Strategy parameters and account details are intentionally left out.</footer>
+</div>
+</body>
+</html>
